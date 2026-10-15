@@ -256,13 +256,15 @@ def main():
           "## Fault classification (Random Forest, true fault windows)\n", md_table(classification), "",
           "## End-to-end (Isolation Forest -> Random Forest)\n", md_table(end_to_end), "",
           "## Severity of alerts per true class\n", md_table(severity, "{}"), "",
-          "![confusion matrices](confusion_matrices.png)\n",
+          "![Confusion matrices for baseline detection, Isolation Forest detection, Random Forest fault type and "
+          "the end-to-end system on the held-out test windows](confusion_matrices.png)\n",
           "## Robustness to noise and dropped samples\n",
           "Models are trained on the training split only; the test split is corrupted. Noise SNR is "
           "relative to the healthy machine's signal level (0 dB = noise as strong as the healthy vibration). "
           "Dropped samples are linearly interpolated by the pipeline, except the 'zero-filled (naive)' row. "
           "`no_aug` columns are the same pipeline trained without noise/drop augmentation.\n",
-          md_table(rob), "", "![robustness](robustness.png)\n"]
+          md_table(rob), "", "![Line charts of detection F1 against added noise and dropped samples for the baseline "
+          "and the Isolation Forest with and without augmentation](robustness.png)\n"]
     if phys is not None:
         md += ["## Physics check of alerts\n",
                "Envelope spectrum of ~0.34 s around each alert: does the peak at a bearing defect frequency "

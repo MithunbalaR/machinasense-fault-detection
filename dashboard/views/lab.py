@@ -10,7 +10,7 @@ from sklearn.metrics import precision_recall_fscore_support
 import physics
 from dashboard import state
 from dashboard.charts import confusion_chart, importance_chart, robustness_chart, threshold_curve_chart
-from dashboard.ui import SERIES, card, hero, page_title, show
+from dashboard.ui import show_chart, section, SERIES, card, hero, page_title, show
 from data_loader import NORMAL_LABEL
 from model import SEVERITY_SIGMA
 
@@ -65,7 +65,11 @@ def render():
             show(card("False alarm rate", f"{m['false alarm rate']:.0%}", "healthy windows flagged"), c[3])
             grid = np.linspace(lo, hi, 120)
             curve = pd.DataFrame([{"threshold": t, **detection_at(scores, abnormal, t)} for t in grid])
-            st.altair_chart(threshold_curve_chart(curve, tuned, chosen), width="stretch")
+            show_chart(threshold_curve_chart(curve, tuned, chosen),
+                       f"Precision, recall, F1 and false-alarm rate on the validation split for alert thresholds from "
+                       f"{lo:.3f} to {hi:.3f}. At {chosen:.3f}: precision {m['precision']:.2f}, recall {m['recall']:.2f}, "
+                       f"F1 {m['f1']:.2f}, false alarms {m['false alarm rate']:.0%}. Tuned threshold: {tuned:.3f}.",
+                       curve.round(3).iloc[::6])
             st.caption(f"Validation split ({len(val)} windows), never the test split. Moving the threshold right means "
                        "fewer false alarms but more missed faults. The tuned threshold sits in the middle of the "
                        "best-F1 range for safety margin. This slider is for exploration and does not change the saved model.")
@@ -76,7 +80,10 @@ def render():
             st.info("No fault classifier (the data has no labels).")
         else:
             imp = pd.Series(bundle["rf"].feature_importances_, index=bundle["feature_names"])
-            st.altair_chart(importance_chart(imp), width="stretch")
+            top3 = imp.sort_values(ascending=False).head(3)
+            show_chart(importance_chart(imp), "Most important features for telling fault types apart: "
+                       + ", ".join(f"{k} ({v:.2f})" for k, v in top3.items()) + ".",
+                       imp.sort_values(ascending=False).head(15).rename("importance").to_frame().round(3))
             st.caption("Which features the Random Forest relies on to tell the fault types apart. "
                        "Per-alert explanations (deviation from healthy) are on the machine page.")
 
@@ -102,35 +109,46 @@ def render():
                 scores are expected and say little about new machines - the robustness test below is the more
                 honest view.</div>""")
 
-            show('<div class="ms-section" style="margin-top:18px">Baseline vs model (detection)</div>')
+            section('Baseline vs model (detection)')
             det_table = pd.DataFrame(det).T.rename(columns={"false_alarm_rate": "false alarm rate",
                                                              "end_to_end_macro_f1": "end-to-end macro F1"})
             st.dataframe(det_table, width="stretch", column_config={c: st.column_config.NumberColumn(format="%.3f")
                                                                      for c in det_table.columns})
 
-            show('<div class="ms-section">Confusion matrices</div>')
+            section('Confusion matrices')
             cms = report.get("confusion_matrices", [])
             for row in range(0, len(cms), 2):
                 for col, cm in zip(st.columns(2, gap="large"), cms[row: row + 2]):
-                    col.altair_chart(confusion_chart(cm["title"], cm["classes"], cm["matrix"]), width="stretch")
+                    matrix = pd.DataFrame(cm["matrix"], index=[f"true {c}" for c in cm["classes"]],
+                                          columns=[f"predicted {c}" for c in cm["classes"]])
+                    correct = int(np.trace(np.array(cm["matrix"])))
+                    show_chart(confusion_chart(cm["title"], cm["classes"], cm["matrix"]),
+                               f"Confusion matrix, {cm['title']}: {correct} of {int(np.sum(cm['matrix']))} windows on the "
+                               "diagonal (correct). " + "; ".join(f"true {t}: " + ", ".join(
+                                   f"{v} predicted {p}" for p, v in zip(cm["classes"], row) if v)
+                                   for t, row in zip(cm["classes"], cm["matrix"])) + ".", matrix, target=col)
 
             rob = report["robustness"]
-            show('<div class="ms-section">Robustness: test split corrupted after training</div>')
+            section('Robustness: test split corrupted after training')
             r1, r2 = st.columns(2, gap="large")
             noise = ["clean"] + [c for c in rob if c.startswith("noise") and "+" not in c]
             drops = ["clean"] + [c for c in rob if c.startswith("drop") and "naive" not in c]
             with r1:
                 st.caption("Added noise (SNR vs healthy signal)")
-                st.altair_chart(robustness_chart(rob, noise), width="stretch")
+                show_chart(robustness_chart(rob, noise), "Detection F1 with added noise: " + "; ".join(
+                    f"{c}: baseline {rob[c]['baseline_f1']:.2f}, Isolation Forest {rob[c]['iforest_f1']:.2f}" for c in noise) + ".",
+                    pd.DataFrame(rob).T.loc[noise].round(3))
             with r2:
                 st.caption("Dropped samples (interpolated)")
-                st.altair_chart(robustness_chart(rob, drops), width="stretch")
+                show_chart(robustness_chart(rob, drops), "Detection F1 with dropped samples: " + "; ".join(
+                    f"{c}: baseline {rob[c]['baseline_f1']:.2f}, Isolation Forest {rob[c]['iforest_f1']:.2f}" for c in drops) + ".",
+                    pd.DataFrame(rob).T.loc[drops].round(3))
             with st.expander("All robustness conditions"):
                 st.dataframe(pd.DataFrame(rob).T, width="stretch",
                              column_config={c: st.column_config.NumberColumn(format="%.3f") for c in pd.DataFrame(rob).T.columns})
             gen = report.get("generalisation")
             if gen:
-                show('<div class="ms-section">Generalisation: the 0 HP model on unseen motor loads</div>')
+                section('Generalisation: the 0 HP model on unseen motor loads')
                 st.caption("Every window of the 1–3 HP recordings: a different shaft speed and load that was never used "
                            "for training or tuning. This is the most honest estimate of performance on a new operating point.")
                 gen_df = pd.DataFrame(gen).T
@@ -146,13 +164,15 @@ def render():
                     color=alt.Color("metric:N", sort=list(names.values()), scale=alt.Scale(range=SERIES[:4]),
                                     legend=alt.Legend(orient="bottom", title=None, labelLimit=300)),
                     tooltip=["load:N", "metric:N", alt.Tooltip("score:Q", format=".3f")])
-                st.altair_chart(bars.properties(height=300), width="stretch")
+                show_chart(bars.properties(height=300), "Scores of the 0 HP model on unseen motor loads: " + "; ".join(
+                    f"{load}: baseline F1 {r['baseline_f1']:.2f}, Isolation Forest F1 {r['iforest_f1']:.2f}, fault-type "
+                    f"accuracy {r['fault_type_accuracy']:.2f}" for load, r in gen_df.iterrows()) + ".", gen_df.round(3))
                 with st.expander("Generalisation table"):
                     st.dataframe(gen_df, width="stretch",
                                  column_config={c: st.column_config.NumberColumn(format="%.3f") for c in gen_df.columns if c != "windows"})
             phys = report.get("physics_check")
             if phys:
-                show('<div class="ms-section">Physics check of test alerts</div>')
+                section('Physics check of test alerts')
                 st.caption(f"Does the envelope spectrum around each alert show a clear (≥ {physics.PEAK_DB} dB) peak at the "
                            "defect frequency of the predicted fault? Independent of the ML models.")
                 st.table(pd.DataFrame(phys).T)

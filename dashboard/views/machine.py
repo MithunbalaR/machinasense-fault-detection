@@ -10,8 +10,9 @@ import physics
 from dashboard import state
 from dashboard.charts import (count_bars, deviation_chart, envelope_chart, health_chart, score_chart, spectrum_chart,
                               waveform_chart)
-from dashboard.ui import (MUTED, REPLAY_SPEEDS, SERIES, SEVERITIES, SEVERITY_COLORS, SEVERITY_ICONS, badge, card, feed,
-                          fmt_time, health_card, hero, physics_card, pretty, show, status_card, ttc_card)
+from dashboard.ui import (section, MUTED, REPLAY_SPEEDS, SERIES, SEVERITIES, SEVERITY_COLORS, SEVERITY_ICONS, badge, card, feed,
+                          a11y, dot, fmt_time, health_card, hero, physics_card, pretty, show, show_chart, status_card,
+                          ttc_card, ttc_text)
 from maintenance import RECENT, incidents, recommend
 from model import explain
 
@@ -57,9 +58,10 @@ def render():
     show(card("Alerts", f"{len(all_alerts):,}", " ".join(f"{SEVERITY_ICONS[s]} {counts.get(s, 0)}" for s in SEVERITIES),
               f"{len(all_alerts) / max(len(results), 1):.0%} of windows"), summary[3])
     mix = all_alerts.fault_type.value_counts().reindex(fault_classes).dropna().astype(int)
-    mix_html = "<br>".join(f'<span class="ms-dot" style="background:{fault_colors.get(pretty(f), MUTED)}"></span> '
+    mix_html = "<br>".join(f'{dot(fault_colors.get(pretty(f), MUTED))} '
                            f'{pretty(f).replace(" fault", "")} <b>{c}</b>' for f, c in mix.items()) or "no alerts"
-    show(f'<div class="ms-card"><div class="ms-label">Faults detected</div><div class="ms-mix">{mix_html}</div></div>', summary[4])
+    show(f'<div class="ms-card" role="group" aria-label="Faults detected"><div class="ms-label">Faults detected</div>'
+         f'<div class="ms-mix">{mix_html}</div></div>', summary[4])
     st.write("")
 
 
@@ -70,27 +72,38 @@ def render():
     with tab_overview:
         left, right = st.columns([2.2, 1], gap="large")
         with left:
-            show('<div class="ms-section">Anomaly score per window</div>')
-            st.altair_chart(score_chart(results, threshold, 300), width="stretch")
+            section('Anomaly score per window')
+            show_chart(score_chart(results, threshold, 300),
+                       f"Anomaly score for {len(results)} windows of {spec['name']}: {len(all_alerts)} are above the "
+                       f"alert threshold {threshold:.3f} (high {counts.get('high', 0)}, medium {counts.get('medium', 0)}, "
+                       f"low {counts.get('low', 0)}).",
+                       results[["timestamp", "anomaly_score", "severity", "fault_type"]].assign(timestamp=lambda d: fmt_time(d.timestamp)))
             st.caption("Dashed line = alert threshold, tuned on the validation split. Hover a point for details.")
-            show('<div class="ms-section">Machine health trend</div>')
-            st.altair_chart(health_chart(health, seconds_per_window), width="stretch")
+            section('Machine health trend')
+            show_chart(health_chart(health, seconds_per_window),
+                       f"Health index of {spec['name']} over {len(health)} windows: starts at {health[0]:.0f}, lowest "
+                       f"{health.min():.0f}, now {health[-1]:.0f} of 100. Time to critical: {ttc_text(health, seconds_per_window)}.",
+                       pd.DataFrame({"health": health.round(1)}).rename_axis("window"))
             st.caption(f"Health index = 100 minus the alert load of the last {RECENT} windows. While health is falling, "
                        "the orange dashed line projects the trend to the critical level (predictive maintenance). "
                        "CWRU recordings last seconds, so projections are in seconds; on run-to-failure data the same "
                        "projection is in hours or days.")
             b1, b2 = st.columns(2, gap="large")
             with b1:
-                show('<div class="ms-section">Alerts by fault type</div>')
+                section('Alerts by fault type')
                 by_fault = all_alerts.fault_type.map(pretty).value_counts().reindex(list(fault_colors), fill_value=0)
-                st.altair_chart(count_bars(by_fault, fault_colors), width="stretch")
+                show_chart(count_bars(by_fault, fault_colors),
+                           "Alerts by fault type: " + ", ".join(f"{k} {v}" for k, v in by_fault.items()) + ".",
+                           by_fault.rename("alerts").to_frame())
             with b2:
-                show('<div class="ms-section">Alerts by severity</div>')
+                section('Alerts by severity')
                 by_sev = counts.reindex(SEVERITIES, fill_value=0)
-                st.altair_chart(count_bars(by_sev, {s: SEVERITY_COLORS[s] for s in SEVERITIES}), width="stretch")
+                show_chart(count_bars(by_sev, {s: SEVERITY_COLORS[s] for s in SEVERITIES}),
+                           "Alerts by severity: " + ", ".join(f"{k} {v}" for k, v in by_sev.items()) + ".",
+                           by_sev.rename("alerts").to_frame())
         with right:
-            show('<div class="ms-section">Latest alerts</div>')
-            show(feed(all_alerts, limit=7))
+            section('Latest alerts')
+            show(feed(all_alerts, limit=7, label=f"Latest alerts on {spec['name']}, newest first"))
 
     # ----------------------------------------------------------------------------- alerts & evidence
     with tab_alerts:
@@ -151,28 +164,37 @@ def render():
                 color = SERIES[i % len(SERIES)]
                 w_col, s_col = st.columns(2, gap="large")
                 with w_col:
-                    show(f'<div class="ms-section">{html.escape(channel)} sensor · waveform</div>')
-                    st.altair_chart(waveform_chart(window_df, reference_df, channel, color, bundle["fs"]), width="stretch")
+                    section(f'{html.escape(channel)} sensor · waveform')
+                    rms = lambda x: float(np.sqrt(np.nanmean(np.square(x))))  # noqa: E731
+                    show_chart(waveform_chart(window_df, reference_df, channel, color, bundle["fs"]),
+                               f"{channel} vibration during the alert window ({len(window_df)} samples) drawn over a healthy "
+                               f"reference window. RMS {rms(window_df[channel]):.3g} versus {rms(reference_df[channel]):.3g} "
+                               f"when healthy ({rms(window_df[channel]) / max(rms(reference_df[channel]), 1e-12):.1f} times).")
                 with s_col:
-                    show(f'<div class="ms-section">{html.escape(channel)} sensor · spectrum</div>')
-                    st.altair_chart(spectrum_chart(window_df, reference_df, channel, color, bundle["fs"]), width="stretch")
+                    section(f'{html.escape(channel)} sensor · spectrum')
+                    show_chart(spectrum_chart(window_df, reference_df, channel, color, bundle["fs"]),
+                               f"Frequency spectrum of the {channel} alert window against the healthy reference, "
+                               f"from 0 to {bundle['fs'] / 2:g} Hz.")
             if snr_db != "off" or drop_rate > 0:
                 st.caption("The alert window includes the simulated noise / dropped samples (gaps in the waveform); "
                            "dropped samples are interpolated before features and spectrum are computed.")
 
             if check is not None:
-                show(f'<div class="ms-section">{html.escape(bundle["physics"]["channel"])} sensor · envelope spectrum '
-                     f'(physics check)</div>')
-                st.altair_chart(envelope_chart(check, bundle["physics"]["fault_hz"],
-                                               {pretty(k): fault_colors.get(pretty(k), MUTED) for k in bundle["physics"]["fault_hz"]}),
-                                width="stretch")
+                section(f'{html.escape(bundle["physics"]["channel"])} sensor · envelope spectrum (physics check)')
+                peaks = ", ".join(f"{pretty(k).replace(' fault', '').lower()} {f:.0f} Hz: {check['prominence'][k]:.0f} dB"
+                                  for k, f in bundle["physics"]["fault_hz"].items())
+                show_chart(envelope_chart(check, bundle["physics"]["fault_hz"],
+                                          {pretty(k): fault_colors.get(pretty(k), MUTED) for k in bundle["physics"]["fault_hz"]}),
+                           f"Envelope spectrum around the alert. Peak height at each bearing defect frequency: {peaks}. "
+                           f"Verdict: physics {check['verdict']} the predicted {pretty(alert.fault_type).lower()}.")
                 st.caption(f"Envelope of ~{physics.CONTEXT_SAMPLES / bundle['fs']:.2f} s around the alert. A damaged bearing "
                            "rings at a defect frequency set by its geometry and the shaft speed "
                            f"({bundle['physics']['shaft_hz'] * 60:.0f} rpm); dashed lines mark each defect frequency and its "
                            f"2nd harmonic. A peak more than {physics.PEAK_DB} dB above the background (grey line) is clear evidence.")
 
-            show('<div class="ms-section">Top contributing features</div>')
-            st.altair_chart(deviation_chart(top), width="stretch")
+            section('Top contributing features')
+            show_chart(deviation_chart(top), "Features that deviate most from the healthy profile: "
+                       + ", ".join(f"{name} {z:+.0f}σ" for name, z in top.deviation_sigma.head(5).items()) + ".")
             with st.expander("Feature values"):
                 st.dataframe(top.rename(columns={"value": "this window", "healthy_mean": "healthy mean", "healthy_std": "healthy std",
                                                  "deviation_sigma": "deviation (σ)", "x_healthy": "× healthy"}),
@@ -194,16 +216,19 @@ def render():
 
     with tab_live:
         n = len(results)
-        c1, c2, c3, _ = st.columns([1, 1, 1.4, 3])
+        c1, c2, c3, c4, _ = st.columns([1, 1, 1, 1.4, 2])
         if c1.button("⏸ Pause" if ss.replay_playing else "▶ Play", type="primary", width="stretch"):
             if not ss.replay_playing and ss.replay_idx >= n - 1:
                 ss.replay_idx = 0
             ss.replay_playing = not ss.replay_playing
             st.rerun()
-        if c2.button("⟲ Restart", width="stretch"):
+        if c2.button("Step ▸", width="stretch", help="Advance one window at a time, at your own pace"):
+            ss.replay_playing = False
+            ss.replay_idx = min(ss.replay_idx + 1, n - 1)
+        if c3.button("⟲ Restart", width="stretch"):
             ss.replay_idx = 0
             st.rerun()
-        speed = c3.select_slider("Speed", list(REPLAY_SPEEDS), value="1×", label_visibility="collapsed")
+        speed = c4.select_slider("Replay speed", list(REPLAY_SPEEDS), value="0.5×" if a11y("reduce_motion") else "1×")
 
         @st.fragment(run_every=REPLAY_SPEEDS[speed] if ss.replay_playing else None)
         def live_replay():
@@ -232,20 +257,22 @@ def render():
             st.write("")
             left, right = st.columns([2.2, 1], gap="large")
             with left:
-                show('<div class="ms-section">Incoming windows</div>')
-                st.altair_chart(score_chart(upto, threshold, 200, x_domain=[0, n - 1], y_domain=y_domain), width="stretch")
-                show('<div class="ms-section">Health trend and projection</div>')
-                st.altair_chart(health_chart(health_so_far, seconds_per_window, x_domain=[0, n - 1], height=200),
-                                width="stretch")
+                section('Incoming windows')
+                show_chart(score_chart(upto, threshold, 200, x_domain=[0, n - 1], y_domain=y_domain),
+                           f"Anomaly scores of the first {i + 1} of {n} windows; {int(upto.is_alert.sum())} alerts so far.")
+                section('Health trend and projection')
+                show_chart(health_chart(health_so_far, seconds_per_window, x_domain=[0, n - 1], height=200),
+                           f"Health {health_so_far[-1]:.0f} of 100 after {i + 1} windows; time to critical "
+                           f"{ttc_text(health_so_far, seconds_per_window)}.")
                 window_df = signal_df.iloc[int(row.start): int(row.start) + bundle["window"]]
                 for col, (j, channel) in zip(st.columns(len(cols)), enumerate(cols)):
                     with col:
-                        show(f'<div class="ms-section">{html.escape(channel)} sensor · current window</div>')
-                        st.altair_chart(waveform_chart(window_df, None, channel, SERIES[j % len(SERIES)], bundle["fs"], 180),
-                                        width="stretch")
+                        section(f'{html.escape(channel)} sensor · current window')
+                        show_chart(waveform_chart(window_df, None, channel, SERIES[j % len(SERIES)], bundle["fs"], 180),
+                                   f"{channel} vibration of window {i + 1}.")
             with right:
-                show('<div class="ms-section">Alert feed</div>')
-                show(feed(upto[upto.is_alert], limit=6))
+                section('Alert feed')
+                show(feed(upto[upto.is_alert], limit=6, label="Alerts so far in the replay, newest first"))
 
         live_replay()
 

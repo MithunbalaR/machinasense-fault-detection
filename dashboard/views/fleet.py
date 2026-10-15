@@ -6,7 +6,7 @@ import streamlit as st
 
 from dashboard import nav, state
 from dashboard.charts import fleet_health_chart, sparkline
-from dashboard.ui import (SERIES, STATUS, card, feed, hero, machine_card, page_title, pretty, show, ttc_text)
+from dashboard.ui import (show_chart, section, SERIES, STATUS, card, feed, hero, machine_card, page_title, pretty, show, ttc_text)
 from maintenance import health_state, incidents
 
 STATE_ORDER = {"critical": 0, "serious": 1, "warning": 2, "good": 3}
@@ -45,7 +45,7 @@ def render():
     show(card("Open work orders", len(open_orders), f"{len(orders)} in total"), k[4])
 
     # ------------------------------------------------------------------------- machine tiles
-    show('<div class="ms-section" style="margin-top:8px">Machines</div>')
+    section('Machines')
     colors = {specs[mid]["name"]: SERIES[i % len(SERIES)] for i, mid in enumerate(specs)}
     per_row = 4
     ids = list(specs)
@@ -55,20 +55,26 @@ def render():
             with col:
                 show(machine_card(mid, specs[mid], res.iloc[-1], health[-1], ttc_text(health, seconds_per_window),
                                   int(res.is_alert.sum())))
-                st.altair_chart(sparkline(health, STATUS[health_state(health[-1])[0]]), width="stretch")
-                if st.button("Open machine →", key=f"open_{mid}", width="stretch"):
+                show_chart(sparkline(health, STATUS[health_state(health[-1])[0]]),
+                           f"Health trend of {specs[mid]['name']}: from {health[0]:.0f} to {health[-1]:.0f} over {len(health)} windows.")
+                if st.button("Open machine →", key=f"open_{mid}", width="stretch",
+                             help=f"Open the detail page of {specs[mid]['name']}"):
                     st.session_state.machine = mid
                     st.switch_page(nav.PAGES["machine"])
 
     # ------------------------------------------------------------------------- trends + feed
     left, right = st.columns([2.2, 1], gap="large")
     with left:
-        show('<div class="ms-section">Health of every machine over time</div>')
-        st.altair_chart(fleet_health_chart({specs[m]["name"]: runs[m][3] for m in specs}, colors), width="stretch")
-        show('<div class="ms-section">Risk ranking</div>')
+        section('Health of every machine over time')
+        show_chart(fleet_health_chart({specs[m]["name"]: runs[m][3] for m in specs}, colors),
+                   "Health index over time for each machine. Current health: "
+                   + ", ".join(f"{specs[m]['name']} {runs[m][3][-1]:.0f}" for m in specs) + ".",
+                   # machines can have different lengths, so align them as Series (shorter ones get blanks)
+                   pd.DataFrame({specs[m]["name"]: pd.Series(runs[m][3].round(1)) for m in specs}).rename_axis("window"))
+        section('Risk ranking')
         st.dataframe(table.drop(columns=["state_key"]).set_index("id"), width="stretch",
                      column_config={"health": st.column_config.ProgressColumn("health", min_value=0, max_value=100, format="%d")})
     with right:
-        show('<div class="ms-section">Latest alerts across the fleet</div>')
+        section('Latest alerts across the fleet')
         fleet_alerts = pd.concat([runs[m][1][runs[m][1].is_alert].assign(machine=specs[m]["name"]) for m in specs])
-        show(feed(fleet_alerts.sort_values("timestamp"), limit=8))
+        show(feed(fleet_alerts.sort_values("timestamp"), limit=8, label="Latest alerts across the fleet, newest first"))

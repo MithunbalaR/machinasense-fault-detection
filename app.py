@@ -10,7 +10,7 @@ import streamlit as st
 st.set_page_config(page_title="MachinaSense", page_icon="⚙️", layout="wide")
 
 from dashboard import nav, state  # noqa: E402  (set_page_config must come first)
-from dashboard.ui import CSS  # noqa: E402
+from dashboard.ui import A11Y_CSS, CSS  # noqa: E402
 from dashboard.views import fleet, lab, machine, studio, work_orders  # noqa: E402
 from maintenance import RECENT  # noqa: E402
 from model import SEVERITY_SIGMA  # noqa: E402
@@ -50,5 +50,17 @@ with st.sidebar:
 - **Machine health**: 100 minus the alert load over the last {RECENT} windows
   (low ⅓, medium ⅔, high 1 per window).
 - **Physics check**: envelope-spectrum peak at the bearing defect frequency.""")
+    with st.expander("♿ Accessibility"):
+        st.toggle("Larger text", key="a11y_large_text")
+        st.toggle("High contrast", key="a11y_high_contrast", help="White text and outlines on black")
+        st.toggle("Reduce motion", key="a11y_reduce_motion", help="No animations; the live replay starts at half speed")
+        st.toggle("Show chart data as tables", key="a11y_tables",
+                  help="Adds a written summary and the underlying data under every chart")
+        st.caption("Severity is always shown as text and shape, never by colour alone. Every chart has a text "
+                   "summary for screen readers. All controls work with the keyboard (Tab / Shift+Tab / Enter).")
+
+extra_css = "".join(css for key, css in A11Y_CSS.items() if st.session_state.get(f"a11y_{key}"))
+if extra_css:
+    st.markdown(f"<style>{extra_css}</style>", unsafe_allow_html=True)
 
 page.run()

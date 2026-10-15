@@ -18,11 +18,14 @@ def score_chart(res, threshold, height=280, x_domain=None, y_domain=None):
     tooltip = ["window:Q", "time:N", "severity:N", "prediction:N", alt.Tooltip("anomaly_score:Q", format=".3f")]
     if "label" in data:
         tooltip.append(alt.Tooltip("label:N", title="true label"))
-    points = alt.Chart(data).mark_circle(size=60, opacity=0.9).encode(
+    # Severity is shown by colour AND shape, so it never relies on colour alone (WCAG 1.4.1).
+    points = alt.Chart(data).mark_point(size=70, opacity=0.95, filled=True).encode(
         x=alt.X("window:Q", title="window # (time order)", scale=alt.Scale(domain=x_domain) if x_domain else alt.Scale()),
         y=alt.Y("anomaly_score:Q", title="anomaly score",
                 scale=alt.Scale(domain=y_domain) if y_domain else alt.Scale(zero=False)),
         color=alt.Color("severity:N", scale=alt.Scale(domain=order, range=[SEVERITY_COLORS[s] for s in order]),
+                        legend=alt.Legend(orient="top", title=None)),
+        shape=alt.Shape("severity:N", scale=alt.Scale(domain=order, range=["circle", "triangle-up", "diamond", "square"]),
                         legend=alt.Legend(orient="top", title=None)),
         tooltip=tooltip)
     rule = alt.Chart(pd.DataFrame({"y": [threshold], "label": ["alert threshold"]})).mark_rule(

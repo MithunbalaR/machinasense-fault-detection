@@ -29,6 +29,7 @@ pip install -r requirements.txt
 | 2. Train | `python model.py` | Trains the baseline, Isolation Forest and Random Forest; tunes thresholds on validation; saves `models/machinasense.joblib` |
 | 3. Evaluate | `python evaluate.py` | Held-out test metrics, baseline vs model, robustness test; writes `reports/` |
 | 4. Dashboard | `streamlit run app.py` | Multi-page app: fleet overview, machine detail with live replay, work orders, data studio, model lab |
+| 5. Tests | `python -m pytest tests` | Accessibility checks (WCAG contrast, text alternatives, labels, semantics) |
 
 The whole pipeline takes well under a minute on a laptop. Seeds are fixed (`SEED = 42`), so
 re-running gives identical numbers.
@@ -150,7 +151,7 @@ healthy vibration). F1 = 0.86 means every healthy window was flagged (false-alar
 - **Severity has the same weakness.** Under heavy noise the high-frequency features deviate
   a lot, so false alarms can also be rated "high".
 
-![robustness](reports/robustness.png)
+![Line charts of detection F1 against added noise (left) and dropped samples (right). The RMS baseline stays near 1.0; the Isolation Forest trained on clean data drops to 0.86 at 20 dB noise and 20% dropped samples; with augmentation it holds 1.0 until 10 dB noise](reports/robustness.png)
 
 ### Generalisation to unseen motor loads (the most honest result)
 
@@ -230,6 +231,29 @@ and current; faults were a +15 °C shift and a −24% pressure drop):
 - **The window should span the time a fault takes to show up.** Training needs at least
   a few dozen windows per class.
 
+## Accessibility
+
+The dashboard is built to WCAG 2.1 AA, and `tests/test_accessibility.py` checks it
+automatically (`python -m pytest tests`).
+
+| WCAG criterion | How the dashboard meets it |
+|---|---|
+| 1.1.1 Non-text content | Every chart gets a generated text summary (e.g. "46 of 92 windows are above the alert threshold…") as its accessible description. **Show chart data as tables** also displays the summary and the data under each chart. Report images have descriptive alt text. |
+| 1.3.1 Info and relationships | Real structure for assistive technology: one level-1 heading per page, level-2 section headings, labelled card groups, alert feeds as lists, machine tiles as articles. The health gauge is a `meter` ("Health 33 of 100, Degraded"). |
+| 1.4.1 Use of colour | Severity is always written (HIGH / MEDIUM / LOW) and shown by marker shape in charts (circle, triangle, diamond, square); colour dots are decorative and hidden from screen readers. |
+| 1.4.3 / 1.4.11 Contrast | All text is at least 4.5:1 (most is 10:1 or more); primary buttons use a darker blue so white text reaches 5.4:1; status colours are at least 3:1 against cards. |
+| 1.4.4 Resize text | **Larger text** setting; sizes are in `rem`, so browser zoom works too. |
+| 2.1.1 Keyboard | Every control is a native Streamlit widget, so the whole app works with Tab / Shift+Tab / Enter / arrow keys. |
+| 2.2.1 / 2.2.2 Timing, pause | The live replay only starts on request, can be paused, and has **Step ▸** to advance one window at a time, at any pace. |
+| 2.3.3 Animation | **Reduce motion** setting, and the OS "reduce motion" preference is respected automatically. |
+| 2.4.1 Bypass blocks | "Skip to main content" link at the top of every page. |
+| 2.4.7 Focus visible | 3 px high-contrast focus outline on every interactive element. |
+| 3.3.2 Labels | Every input has a visible label and, where useful, help text. |
+
+**Sidebar → ♿ Accessibility** offers four settings, applied to every page: *Larger text*,
+*High contrast* (white on black, with outlines), *Reduce motion* (no animations; the replay
+starts at half speed) and *Show chart data as tables*.
+
 ## Files
 
 | File | Purpose |
@@ -244,6 +268,7 @@ and current; faults were a +15 °C shift and a −24% pressure drop):
 | `app.py` | Dashboard entry point: theme, sidebar, page navigation |
 | `dashboard/ui.py`, `charts.py`, `state.py` | Shared look and feel, Altair charts, and cached data/model access, demo fleet, work-order storage |
 | `dashboard/views/` | One module per page: `fleet`, `machine`, `work_orders`, `studio`, `lab` |
+| `tests/test_accessibility.py` | Automated WCAG 2.1 AA checks for the dashboard |
 | `reports/` | `metrics.md`, `metrics.json`, `confusion_matrices.png`, `robustness.png` |
 
 Runtime files that are not in git: `models/` (rebuilt by `python model.py`), `data/raw/` (downloaded),

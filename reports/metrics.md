@@ -37,7 +37,7 @@ Data: `cwru`, held-out test split (184 windows of 2048 samples). Thresholds were
 | inner_race | 0 | 0 | 0 | 46 |
 | outer_race | 0 | 0 | 0 | 46 |
 
-![confusion matrices](confusion_matrices.png)
+![Confusion matrices for baseline detection, Isolation Forest detection, Random Forest fault type and the end-to-end system on the held-out test windows](confusion_matrices.png)
 
 ## Robustness to noise and dropped samples
 
@@ -56,7 +56,7 @@ Models are trained on the training split only; the test split is corrupted. Nois
 | drop 20% zero-filled (naive) | 1.000 | 0.000 | 0.857 | 1.000 | 0.667 | 0.857 | 1.000 | 0.667 |
 | noise 20 dB + drop 5% | 1.000 | 0.000 | 1.000 | 0.000 | 1.000 | 0.857 | 1.000 | 0.667 |
 
-![robustness](robustness.png)
+![Line charts of detection F1 against added noise and dropped samples for the baseline and the Isolation Forest with and without augmentation](robustness.png)
 
 ## Physics check of alerts
 

@@ -12,7 +12,7 @@ from sklearn.metrics import f1_score
 import evaluate
 from dashboard import state
 from dashboard.charts import health_chart, score_chart
-from dashboard.ui import card, hero, page_title, pretty, show
+from dashboard.ui import card, hero, page_title, pretty, show, show_chart
 from data_loader import NORMAL_LABEL, load_dataset
 from maintenance import incidents
 from model import AUGMENT_COPIES, save_bundle, train
@@ -119,8 +119,11 @@ def render():
                 truth = (results.label != NORMAL_LABEL).to_numpy()
                 show(card("Detection F1 vs labels", f"{f1_score(truth, results.is_alert, zero_division=0):.2f}",
                           "uses the file's labels; this file was not used for training"), a[3])
-            st.altair_chart(score_chart(results, bundle["if_threshold"], 260), width="stretch")
-            st.altair_chart(health_chart(health, bundle["step"] / bundle["fs"]), width="stretch")
+            show_chart(score_chart(results, bundle["if_threshold"], 260),
+                       f"Anomaly score for {len(results)} windows of the uploaded data; {int(results.is_alert.sum())} are "
+                       f"above the alert threshold {bundle['if_threshold']:.3f}.")
+            show_chart(health_chart(health, bundle["step"] / bundle["fs"]),
+                       f"Health index of the uploaded data: lowest {health.min():.0f}, final {health[-1]:.0f} of 100.")
             st.dataframe(inc.assign(fault=inc.fault_type.map(pretty)).drop(columns=["fault_type"]), width="stretch")
 
     with tab_train:
