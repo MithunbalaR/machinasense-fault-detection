@@ -1,0 +1,302 @@
+{
+  "detection": {
+    "Baseline (RMS z-score)": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "false_alarm_rate": 0.0,
+      "end_to_end_macro_f1": 1.0
+    },
+    "Isolation Forest": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "false_alarm_rate": 0.0,
+      "end_to_end_macro_f1": 1.0
+    }
+  },
+  "classification": {
+    "ball": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 46.0
+    },
+    "inner_race": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 46.0
+    },
+    "outer_race": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 46.0
+    },
+    "macro avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 138.0
+    }
+  },
+  "end_to_end": {
+    "normal": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 46.0
+    },
+    "ball": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 46.0
+    },
+    "inner_race": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 46.0
+    },
+    "outer_race": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 46.0
+    },
+    "macro avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 184.0
+    }
+  },
+  "severity": {
+    "normal": {
+      "none": 46,
+      "low": 0,
+      "medium": 0,
+      "high": 0
+    },
+    "ball": {
+      "none": 0,
+      "low": 0,
+      "medium": 46,
+      "high": 0
+    },
+    "inner_race": {
+      "none": 0,
+      "low": 0,
+      "medium": 0,
+      "high": 46
+    },
+    "outer_race": {
+      "none": 0,
+      "low": 0,
+      "medium": 0,
+      "high": 46
+    }
+  },
+  "robustness": {
+    "clean": {
+      "baseline_f1": 1.0,
+      "baseline_false_alarm": 0.0,
+      "iforest_f1": 1.0,
+      "iforest_false_alarm": 0.0,
+      "end_to_end_macro_f1": 1.0,
+      "iforest_no_aug_f1": 1.0,
+      "iforest_no_aug_false_alarm": 0.0,
+      "end_to_end_no_aug_macro_f1": 1.0
+    },
+    "noise 30 dB": {
+      "baseline_f1": 1.0,
+      "baseline_false_alarm": 0.0,
+      "iforest_f1": 1.0,
+      "iforest_false_alarm": 0.0,
+      "end_to_end_macro_f1": 1.0,
+      "iforest_no_aug_f1": 1.0,
+      "iforest_no_aug_false_alarm": 0.0,
+      "end_to_end_no_aug_macro_f1": 1.0
+    },
+    "noise 20 dB": {
+      "baseline_f1": 1.0,
+      "baseline_false_alarm": 0.0,
+      "iforest_f1": 1.0,
+      "iforest_false_alarm": 0.0,
+      "end_to_end_macro_f1": 1.0,
+      "iforest_no_aug_f1": 0.8571428571428571,
+      "iforest_no_aug_false_alarm": 1.0,
+      "end_to_end_no_aug_macro_f1": 0.6666666666666666
+    },
+    "noise 10 dB": {
+      "baseline_f1": 1.0,
+      "baseline_false_alarm": 0.0,
+      "iforest_f1": 0.8571428571428571,
+      "iforest_false_alarm": 1.0,
+      "end_to_end_macro_f1": 0.6666666666666666,
+      "iforest_no_aug_f1": 0.8571428571428571,
+      "iforest_no_aug_false_alarm": 1.0,
+      "end_to_end_no_aug_macro_f1": 0.6666666666666666
+    },
+    "noise 0 dB": {
+      "baseline_f1": 0.9928057553956835,
+      "baseline_false_alarm": 0.043478260869565216,
+      "iforest_f1": 0.8571428571428571,
+      "iforest_false_alarm": 1.0,
+      "end_to_end_macro_f1": 0.6666666666666666,
+      "iforest_no_aug_f1": 0.8571428571428571,
+      "iforest_no_aug_false_alarm": 1.0,
+      "end_to_end_no_aug_macro_f1": 0.6666666666666666
+    },
+    "drop 1%": {
+      "baseline_f1": 1.0,
+      "baseline_false_alarm": 0.0,
+      "iforest_f1": 1.0,
+      "iforest_false_alarm": 0.0,
+      "end_to_end_macro_f1": 1.0,
+      "iforest_no_aug_f1": 1.0,
+      "iforest_no_aug_false_alarm": 0.0,
+      "end_to_end_no_aug_macro_f1": 1.0
+    },
+    "drop 5%": {
+      "baseline_f1": 1.0,
+      "baseline_false_alarm": 0.0,
+      "iforest_f1": 1.0,
+      "iforest_false_alarm": 0.0,
+      "end_to_end_macro_f1": 1.0,
+      "iforest_no_aug_f1": 0.9857142857142858,
+      "iforest_no_aug_false_alarm": 0.08695652173913043,
+      "end_to_end_no_aug_macro_f1": 0.978219696969697
+    },
+    "drop 20%": {
+      "baseline_f1": 1.0,
+      "baseline_false_alarm": 0.0,
+      "iforest_f1": 1.0,
+      "iforest_false_alarm": 0.0,
+      "end_to_end_macro_f1": 1.0,
+      "iforest_no_aug_f1": 0.8571428571428571,
+      "iforest_no_aug_false_alarm": 1.0,
+      "end_to_end_no_aug_macro_f1": 0.6666666666666666
+    },
+    "drop 20% zero-filled (naive)": {
+      "baseline_f1": 1.0,
+      "baseline_false_alarm": 0.0,
+      "iforest_f1": 0.8571428571428571,
+      "iforest_false_alarm": 1.0,
+      "end_to_end_macro_f1": 0.6666666666666666,
+      "iforest_no_aug_f1": 0.8571428571428571,
+      "iforest_no_aug_false_alarm": 1.0,
+      "end_to_end_no_aug_macro_f1": 0.6666666666666666
+    },
+    "noise 20 dB + drop 5%": {
+      "baseline_f1": 1.0,
+      "baseline_false_alarm": 0.0,
+      "iforest_f1": 1.0,
+      "iforest_false_alarm": 0.0,
+      "end_to_end_macro_f1": 1.0,
+      "iforest_no_aug_f1": 0.8571428571428571,
+      "iforest_no_aug_false_alarm": 1.0,
+      "end_to_end_no_aug_macro_f1": 0.6666666666666666
+    }
+  },
+  "confusion_matrices": [
+    {
+      "title": "Detection: baseline",
+      "classes": [
+        "normal",
+        "abnormal"
+      ],
+      "matrix": [
+        [
+          46,
+          0
+        ],
+        [
+          0,
+          138
+        ]
+      ]
+    },
+    {
+      "title": "Detection: Isolation Forest",
+      "classes": [
+        "normal",
+        "abnormal"
+      ],
+      "matrix": [
+        [
+          46,
+          0
+        ],
+        [
+          0,
+          138
+        ]
+      ]
+    },
+    {
+      "title": "Fault type: Random Forest",
+      "classes": [
+        "ball",
+        "inner_race",
+        "outer_race"
+      ],
+      "matrix": [
+        [
+          46,
+          0,
+          0
+        ],
+        [
+          0,
+          46,
+          0
+        ],
+        [
+          0,
+          0,
+          46
+        ]
+      ]
+    },
+    {
+      "title": "End-to-end: IF -> RF",
+      "classes": [
+        "normal",
+        "ball",
+        "inner_race",
+        "outer_race"
+      ],
+      "matrix": [
+        [
+          46,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          46,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          46,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          46
+        ]
+      ]
+    }
+  ],
+  "test_windows": 184,
+  "data_source": "cwru"
+}
