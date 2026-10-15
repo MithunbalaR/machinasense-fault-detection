@@ -5,6 +5,8 @@
 3. End-to-end (normal / fault type), and severity counts per true class
 4. Robustness: the same test split with added noise and randomly dropped samples
    (models are trained on clean data - this mimics a degraded sensor in the field)
+5. Physics check: share of alerts whose envelope spectrum confirms the predicted fault
+6. Generalisation (CWRU only): the 0 HP model on unseen motor loads (1-3 HP)
 
 Writes reports/metrics.md, reports/metrics.json, reports/confusion_matrices.png
 and reports/robustness.png.
@@ -23,7 +25,8 @@ import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
 from sklearn.metrics import confusion_matrix, f1_score, precision_recall_fscore_support
 
-from data_loader import NORMAL_LABEL, load_dataset
+import physics
+from data_loader import CWRU_LOADS, NORMAL_LABEL, load_cwru, load_dataset
 from features import add_noise, drop_samples, split_chronologically
 from model import SEED, analyze, load_bundle, train
 
@@ -148,6 +151,42 @@ def robustness_test(test_df, bundle, clean_bundle=None):
     return rob
 
 
+def physics_agreement(test_df, res, bundle):
+    """Physics verdict per true class for every alert (None if defect frequencies are unknown)."""
+    if not physics.available(bundle.get("physics"), bundle["fs"]):
+        return None
+    alerts = res[res.is_alert]
+    verdicts = [physics.check(test_df, int(r.start), bundle["window"], bundle["fs"], bundle["physics"], r.fault_type)["verdict"]
+                for _, r in alerts.iterrows()]
+    table = pd.crosstab(alerts.label, pd.Series(verdicts, index=alerts.index, name="physics"))
+    table = table.reindex(columns=["confirms", "inconclusive", "disagrees"], fill_value=0)
+    table.index.name = "true label"
+    return table
+
+
+def generalisation(bundle):
+    """CWRU only: score the 0 HP model on every window of the unseen 1-3 HP recordings."""
+    if bundle["data_source"] != "cwru":
+        return None
+    rows = {}
+    for hp in sorted(CWRU_LOADS)[1:]:
+        res, _ = analyze(load_cwru(hp).df, bundle)
+        labels = res.label.to_numpy()
+        faulty = labels != NORMAL_LABEL
+        iso, base = detection_metrics(labels, res.is_alert.to_numpy()), detection_metrics(labels, res.baseline_alert.to_numpy())
+        rows[f"{hp} HP"] = {
+            "windows": len(res),
+            "iforest_f1": iso["f1"], "iforest_false_alarm": iso["false_alarm_rate"],
+            "baseline_f1": base["f1"], "baseline_false_alarm": base["false_alarm_rate"],
+            "fault_type_accuracy": (res.fault_type.to_numpy()[faulty] == labels[faulty]).mean(),
+            "end_to_end_macro_f1": f1_score(labels, res.predicted, average="macro", zero_division=0),
+        }
+        print(f"  {hp} HP: {rows[f'{hp} HP']}")
+    table = pd.DataFrame.from_dict(rows, orient="index")
+    table.index.name = "motor load (unseen)"
+    return table
+
+
 def main():
     bundle = load_bundle()
     if not bundle["has_labels"]:
@@ -202,6 +241,15 @@ def main():
     rob = robustness_test(test_df, bundle, clean_bundle)
     plot_robustness(rob, REPORT_DIR / "robustness.png")
 
+    # 5. physics check, 6. unseen motor loads
+    phys = physics_agreement(test_df, res, bundle)
+    if phys is not None:
+        print("\nPhysics check of test alerts (envelope spectrum vs predicted fault):\n" + phys.to_string())
+    print("\nGeneralisation to unseen motor loads:")
+    gen = generalisation(bundle)
+    if gen is not None:
+        print(gen.round(3).to_string())
+
     md = [f"# MachinaSense evaluation\n\nData: `{bundle['data_source']}`, held-out test split "
           f"({len(res)} windows of {bundle['window']} samples). Thresholds were tuned on the validation split only.\n",
           "## Detection: baseline vs model\n", md_table(detection), "",
@@ -215,6 +263,15 @@ def main():
           "Dropped samples are linearly interpolated by the pipeline, except the 'zero-filled (naive)' row. "
           "`no_aug` columns are the same pipeline trained without noise/drop augmentation.\n",
           md_table(rob), "", "![robustness](robustness.png)\n"]
+    if phys is not None:
+        md += ["## Physics check of alerts\n",
+               "Envelope spectrum of ~0.34 s around each alert: does the peak at a bearing defect frequency "
+               f"match the predicted fault? A clear peak is at least {physics.PEAK_DB} dB above the background.\n",
+               md_table(phys, "{}"), ""]
+    if gen is not None:
+        md += ["## Generalisation to unseen motor loads\n",
+               "The model trained on 0 HP data, scored on every window of the 1-3 HP recordings "
+               "(different shaft speed and load, never seen in training or tuning).\n", md_table(gen), ""]
     (REPORT_DIR / "metrics.md").write_text("\n".join(md), encoding="utf-8")
     metrics = {"detection": detection.to_dict(orient="index"), "classification": classification.to_dict(orient="index"),
                "end_to_end": end_to_end.to_dict(orient="index"), "severity": severity.to_dict(orient="index"),
@@ -222,7 +279,9 @@ def main():
                "confusion_matrices": [{"title": title, "classes": classes,
                                        "matrix": confusion_matrix(true, pred, labels=classes).tolist()}
                                       for title, true, pred, classes in panels],
-               "test_windows": len(res), "data_source": bundle["data_source"]}
+               "test_windows": len(res), "data_source": bundle["data_source"],
+               "physics_check": phys.to_dict(orient="index") if phys is not None else None,
+               "generalisation": gen.to_dict(orient="index") if gen is not None else None}
     (REPORT_DIR / "metrics.json").write_text(json.dumps(metrics, indent=2, default=float), encoding="utf-8")
     print(f"\nwrote {REPORT_DIR / 'metrics.md'} (+ .json, confusion_matrices.png, robustness.png)")
 

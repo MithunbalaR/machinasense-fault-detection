@@ -108,6 +108,7 @@ def train(source="cwru", fs=None, window=WINDOW_SIZE, step=STEP, n_bands=N_BANDS
         "healthy_mean": X_train[healthy].mean(),
         "healthy_std": X_train[healthy].std().clip(lower=1e-12),
         "signal_std": signal_std,
+        "physics": ds.physics,                     # bearing defect frequencies, if known
         "baseline": baseline, "iforest": iforest, "if_threshold": if_threshold, "rf": rf,
     }
     return bundle, X_val, w_val

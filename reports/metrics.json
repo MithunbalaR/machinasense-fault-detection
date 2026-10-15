@@ -298,5 +298,51 @@
     }
   ],
   "test_windows": 184,
-  "data_source": "cwru"
+  "data_source": "cwru",
+  "physics_check": {
+    "ball": {
+      "confirms": 0,
+      "inconclusive": 46,
+      "disagrees": 0
+    },
+    "inner_race": {
+      "confirms": 46,
+      "inconclusive": 0,
+      "disagrees": 0
+    },
+    "outer_race": {
+      "confirms": 46,
+      "inconclusive": 0,
+      "disagrees": 0
+    }
+  },
+  "generalisation": {
+    "1 HP": {
+      "windows": 1892,
+      "iforest_f1": 0.8771604938271605,
+      "iforest_false_alarm": 0.8450106157112527,
+      "baseline_f1": 1.0,
+      "baseline_false_alarm": 0.0,
+      "fault_type_accuracy": 0.7551020408163265,
+      "end_to_end_macro_f1": 0.5615161873989762
+    },
+    "2 HP": {
+      "windows": 1893,
+      "iforest_f1": 0.8715118061944189,
+      "iforest_false_alarm": 0.8877118644067796,
+      "baseline_f1": 1.0,
+      "baseline_false_alarm": 0.0,
+      "fault_type_accuracy": 0.7009148486981,
+      "end_to_end_macro_f1": 0.4787959138789873
+    },
+    "3 HP": {
+      "windows": 1897,
+      "iforest_f1": 0.8975732745036243,
+      "iforest_false_alarm": 0.6871035940803383,
+      "baseline_f1": 1.0,
+      "baseline_false_alarm": 0.0,
+      "fault_type_accuracy": 0.6797752808988764,
+      "end_to_end_macro_f1": 0.5238436823893415
+    }
+  }
 }

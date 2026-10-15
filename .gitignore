@@ -2,3 +2,5 @@
 __pycache__/
 data/raw/
 models/
+data/work_orders.json
+data/uploads/

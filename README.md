@@ -28,7 +28,7 @@ pip install -r requirements.txt
 | 1. Data | `python data_loader.py` | Downloads the CWRU subset to `data/raw/` and prints a summary |
 | 2. Train | `python model.py` | Trains the baseline, Isolation Forest and Random Forest; tunes thresholds on validation; saves `models/machinasense.joblib` |
 | 3. Evaluate | `python evaluate.py` | Held-out test metrics, baseline vs model, robustness test; writes `reports/` |
-| 4. Dashboard | `streamlit run app.py` | Alert list with severity, fault type, top features and the signal window |
+| 4. Dashboard | `streamlit run app.py` | Multi-page app: fleet overview, machine detail with live replay, work orders, data studio, model lab |
 
 The whole pipeline takes well under a minute on a laptop. Seeds are fixed (`SEED = 42`), so
 re-running gives identical numbers.
@@ -80,6 +80,30 @@ e.g. `DE_rms (+272σ)` together with the value, healthy mean and "× healthy" ra
 bands are round numbers (decades) set by hand, not tuned on test data. Change
 `SEVERITY_SIGMA` in `model.py`.
 
+**Physics check (`physics.py`).** An independent check of each alert that uses no ML.
+A damaged bearing produces a burst of vibration every time a ball passes the defect, at a rate
+fixed by the bearing geometry and shaft speed. For the CWRU drive-end bearing (SKF 6205) at
+1796 rpm these rates are: inner race 162 Hz, outer race 107 Hz, ball 141 Hz.
+The check works in four steps:
+1. take ~0.34 s of signal around the alert;
+2. band-pass it and take its envelope;
+3. look for a peak at each defect frequency and its 2nd harmonic;
+4. compare the strongest peak with the ML prediction.
+
+The verdict is **confirms**, **disagrees** or **inconclusive** (no peak ≥ 12 dB above the
+background; healthy bearings sit at ~5–6 dB). The defect frequencies come from
+`data_loader.py`: from each file's RPM for CWRU, or from `CSV_PHYSICS` for your own data.
+
+**Maintenance decisions (`maintenance.py`).**
+- *Recommended action:* each fault type has an action, e.g. "plan a bearing replacement;
+  check the housing fit…". Each severity has an urgency: high = act within 24 h,
+  medium = within 7 days, low = monitor.
+- *Health index:* 100 = no alerts in the last 20 windows; each alert costs ⅓, ⅔ or 1 by severity.
+- *Time to critical (prognostic):* a straight line fitted to the last 30 health values. While
+  health is falling, it is extended to the critical level (25). CWRU recordings last seconds,
+  so the estimates are in seconds; with run-to-failure data the same code estimates the
+  remaining useful life in hours or days.
+
 ## Results on CWRU (held-out test split, 184 windows)
 
 | | Precision | Recall | F1 | False-alarm rate |
@@ -89,9 +113,9 @@ bands are round numbers (decades) set by hand, not tuned on test data. Change
 | Random Forest fault type (macro) | 1.00 | 1.00 | 1.00 | – |
 
 **Be careful how you present this.** Each class here is a single ~5 s recording, so the
-test windows come from the same bearing and the same run as the training windows. Perfect
-scores on CWRU are well known and do not mean the model generalises to new machines.
-Severity on clean test data: ball → medium, inner/outer race → high, normal → none.
+test windows come from the same bearing and the same run as the training windows. The
+generalisation test below shows these perfect scores do **not** carry over to a new operating
+point. Severity on clean test data: ball → medium, inner/outer race → high, normal → none.
 
 Full tables and confusion matrices are in `reports/metrics.md`.
 
@@ -128,13 +152,48 @@ healthy vibration). F1 = 0.86 means every healthy window was flagged (false-alar
 
 ![robustness](reports/robustness.png)
 
+### Generalisation to unseen motor loads (the most honest result)
+
+The 0 HP model is scored on every window of the 1–3 HP recordings, which have a different
+load and shaft speed and were never used for training or tuning. `evaluate.py` downloads
+these 12 extra files (~100 MB) on first run.
+
+| Unseen load | IF detection F1 | IF false-alarm rate | Baseline F1 | Fault-type accuracy | End-to-end macro F1 |
+|---|---|---|---|---|---|
+| 1 HP | 0.88 | 85% | 1.00 | 76% | 0.56 |
+| 2 HP | 0.87 | 89% | 1.00 | 70% | 0.48 |
+| 3 HP | 0.90 | 69% | 1.00 | 68% | 0.52 |
+
+- **The ML pipeline is tied to the operating point it was trained on.** At a new load, most
+  healthy windows look abnormal to the Isolation Forest, and fault-type accuracy drops to ~70%.
+- **The RMS baseline still separates healthy from faulty perfectly**, with no false alarms.
+- **Next steps:** train on several loads, add speed-normalised features (order tracking or
+  envelope peaks at defect frequencies), or let the baseline or physics check confirm
+  Isolation Forest alerts.
+
+These numbers were not used to tune anything.
+
+### Physics check of the test alerts
+
+| True fault | Physics confirms | Inconclusive | Disagrees |
+|---|---|---|---|
+| inner race | 46 | 0 | 0 |
+| outer race | 46 | 0 | 0 |
+| ball | 0 | 46 | 0 |
+
+Inner- and outer-race alerts show clear peaks (around 25 dB) at their defect frequencies. The 0.007" ball
+fault shows no clear peak at the ball frequency, which matches published analyses of this
+dataset: ball defects don't strike the races consistently. The physics check never contradicts the ML.
+
 ## On hackathon day: swapping in their data
 
 1. Look at their file. If the columns aren't `timestamp`, `label`, etc., edit the constants at
    the top of `data_loader.py`:
    - `CSV_TIMESTAMP_COL`, `CSV_LABEL_COL`: their column names;
    - `CSV_EXCLUDE_COLS`: numeric columns that are not sensors (IDs, counters);
-   - `NORMAL_ALIASES`: whatever they call the healthy state.
+   - `NORMAL_ALIASES`: whatever they call the healthy state;
+   - `CSV_PHYSICS` (optional, vibration data from a rolling bearing only): the vibration
+     column, shaft rpm and bearing defect orders. These turn on the physics check.
 
    Text columns are ignored automatically. Then check it loads:
    ```powershell
@@ -148,6 +207,9 @@ healthy vibration). F1 = 0.86 means every healthy window was flagged (false-alar
    ```
    The data source and every setting are stored in the model bundle, so `evaluate.py` and
    `app.py` pick them up automatically.
+
+   **No-code alternative:** open the dashboard's **Data studio** page, upload the file, map the
+   columns, and click *Train & activate*, then *Run evaluation*.
 
 How the CSV loader behaves:
 - **Sampling rate:** inferred from the timestamps (override with `--fs`).
@@ -175,29 +237,38 @@ and current; faults were a +15 °C shift and a −24% pressure drop):
 | `data_loader.py` | Loads CWRU or a CSV into the standard format (the only format-aware file) |
 | `features.py` | Chronological split, windowing, features, noise/drop simulation |
 | `baseline.py` | RMS z-score detector and the F1-based threshold picker |
-| `model.py` | Training, saving/loading, and `analyze()`: the shared inference path used by `evaluate.py` and `app.py` |
-| `evaluate.py` | Test-split metrics, baseline vs model, robustness test → `reports/` |
-| `app.py` | Streamlit dashboard |
+| `model.py` | Training, saving/loading, and `analyze()`: the shared inference path used by `evaluate.py` and the dashboard |
+| `physics.py` | Envelope spectrum and the physics check of an alert against the bearing defect frequencies |
+| `maintenance.py` | Recommended actions, health index, time-to-critical projection, incident grouping |
+| `evaluate.py` | Test-split metrics, baseline vs model, robustness, physics check, unseen-load generalisation → `reports/` |
+| `app.py` | Dashboard entry point: theme, sidebar, page navigation |
+| `dashboard/ui.py`, `charts.py`, `state.py` | Shared look and feel, Altair charts, and cached data/model access, demo fleet, work-order storage |
+| `dashboard/views/` | One module per page: `fleet`, `machine`, `work_orders`, `studio`, `lab` |
 | `reports/` | `metrics.md`, `metrics.json`, `confusion_matrices.png`, `robustness.png` |
+
+Runtime files that are not in git: `models/` (rebuilt by `python model.py`), `data/raw/` (downloaded),
+`data/work_orders.json` and `data/uploads/` (created by the dashboard).
 
 ## Dashboard
 
-`streamlit run app.py` opens a dark-themed dashboard (theme in `.streamlit/config.toml`).
+`streamlit run app.py` opens a dark-themed, multi-page app (theme in `.streamlit/config.toml`).
+The sidebar holds the page menu and the **Simulate sensor problems** controls (added noise,
+dropped samples), which apply to every page.
 
-**Header row** (always visible):
-- **Machine health:** a 0–100 gauge, where 100 = no alerts in the last 20 windows; each alert
-  costs ⅓, ⅔ or 1 by severity. 80+ is *Healthy*, 50+ *Watch*, 25+ *Degraded*, below that *Critical*.
-- **Latest status:** the fault and severity of the most recent window.
-- **Counts:** windows analysed, alerts by severity, and alerts per fault type.
-
-**Tabs:**
-
-| Tab | What it shows |
+| Page | What it shows |
 |---|---|
-| Overview | Anomaly-score timeline coloured by severity with the threshold line; alerts by fault type and by severity; a feed of the latest alerts |
-| Live replay | Plays the data back window by window as if it were streaming from the machine. Play / pause / restart and a speed control; the health gauge, status, score chart, current waveform and alert feed update live |
-| Alerts & evidence | Filterable alert table. For the selected alert: severity, fault, window time and score; then a waveform **and** frequency spectrum per sensor against a healthy reference, and the top contributing features on a log σ scale with the medium/high severity bands marked |
-| Evaluation | Headline F1 scores, baseline vs model table, confusion matrices and robustness charts, read from `reports/metrics.json` (run `python evaluate.py` first) |
+| 🏭 **Fleet overview** (home) | Counts of healthy, at-risk and critical machines plus open work orders; a tile per machine with health gauge, state, latest fault, time to critical and a health sparkline (**Open machine →** drills in); the health of every machine over time; a risk ranking; the latest alerts across the fleet |
+| ⚙️ **Machine detail** | For the selected machine: health, latest status, time to critical and alert counts, then four tabs. **Overview**: anomaly-score timeline, health trend with projection, alerts by fault type and severity, alert feed. **Live replay**: plays the data back window by window with pop-up notifications for new alerts. **Alerts & evidence**: alert table with CSV report and, per alert, recommended action, physics check, waveform, spectrum, envelope spectrum and top contributing features. **Incidents**: alerts grouped into incidents with *Create work order* |
+| 🛠 **Work orders** | Open / in progress / overdue / done counts; an editable table (status, assignee, notes) saved to `data/work_orders.json`; due dates by urgency (high 24 h, medium 7 days, low 30 days); bulk creation for all incidents; CSV export |
+| 📤 **Data studio** | Upload a CSV (or use the built-in sample), map the timestamp, label and sensor columns, check the dataset, then **analyse it with the active model** or **train a new model** (window, step, FFT bands, augmentation) and run the evaluation, all without code. **Restore the CWRU demo model** puts the original back |
+| 🧪 **Model lab** | Model card; **threshold playground** (precision, recall, F1 and false-alarm rate as you move the alert threshold, on the validation split); Random Forest feature importance; the full held-out evaluation (confusion matrices, robustness, unseen-load generalisation, physics check) |
 
-The sidebar switches between the test, validation and whole dataset, and can inject noise or
-dropped samples live. Combined with **Live replay**, that's a good way to demo robustness to judges.
+**The demo fleet** is built from the held-out test recordings, which are never used for
+training or tuning. Motor M-101 stays healthy. M-102, M-103 and M-104 run healthy and then
+develop a ball, inner-race and outer-race fault respectively. With your own labelled data,
+the fleet is built the same way from its test split.
+
+**Suggested demo:** start on the Fleet overview, then click **Open machine →** on M-103 and
+play **Live replay**. Move the noise slider to show robustness, raise a work order from
+**Incidents** and show it on **Work orders**. Load the sample in the **Data studio**, and end
+with the threshold slider in the **Model lab**.

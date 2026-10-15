@@ -34,13 +34,25 @@ CSV_LABEL_COL = "label"
 CSV_EXCLUDE_COLS = []            # numeric columns that are NOT sensors, e.g. ["machine_id"]
 NORMAL_ALIASES = {"normal", "healthy", "ok", "good", "none", "0", "no_fault"}
 GAP_FACTOR = 5                   # a time gap > 5x the usual spacing starts a new segment
+# Optional bearing physics for the envelope check (physics.py), e.g. for a vibration CSV:
+# CSV_PHYSICS = {"channel": "vibration", "shaft_rpm": 1800,
+#                "orders": {"inner_race": 5.4152, "outer_race": 3.5848, "ball": 4.7135}}
+CSV_PHYSICS = None
 
-# --- CWRU subset: 48 kHz drive-end experiments, 0 HP load (~1797 rpm), 0.007" faults ---
+# --- CWRU subset: 48 kHz drive-end experiments, 0.007" faults, motor loads 0-3 HP ---
 CWRU_URL = "https://engineering.case.edu/sites/default/files/{}.mat"
 CWRU_FS = 48_000
-CWRU_FILES = {"normal": 97, "inner_race": 109, "ball": 122, "outer_race": 135}
+CWRU_LOADS = {               # motor load (HP) -> file number per condition
+    0: {"normal": 97, "inner_race": 109, "ball": 122, "outer_race": 135},
+    1: {"normal": 98, "inner_race": 110, "ball": 123, "outer_race": 136},
+    2: {"normal": 99, "inner_race": 111, "ball": 124, "outer_race": 137},
+    3: {"normal": 100, "inner_race": 112, "ball": 125, "outer_race": 138},
+}
+CWRU_FILES = CWRU_LOADS[0]       # the load used for training
 CWRU_CHANNELS = ["DE", "FE"]     # drive-end and fan-end accelerometers
 CWRU_START = pd.Timestamp("2026-01-05 08:00:00")  # CWRU has no clock; timestamps are synthetic
+# Drive-end bearing SKF 6205: defect frequencies as multiples of shaft speed (CWRU website).
+CWRU_BEARING_ORDERS = {"inner_race": 5.4152, "outer_race": 3.5848, "ball": 4.7135}
 
 
 @dataclass
@@ -50,6 +62,7 @@ class Dataset:
     sensor_cols: list
     has_labels: bool
     source: str
+    physics: dict = None     # {"channel", "shaft_hz", "fault_hz": {label: Hz}} if bearing geometry is known
 
     def summary(self):
         lines = [f"source: {self.source}", f"samples: {len(self.df):,}  fs: {self.fs:g} Hz",
@@ -59,7 +72,15 @@ class Dataset:
         if self.has_labels:
             counts = self.df.groupby("label").size()
             lines.append("samples per label: " + ", ".join(f"{k}={v:,}" for k, v in counts.items()))
+        if self.physics:
+            lines.append("bearing defect frequencies: " + ", ".join(
+                f"{k}={v:.1f} Hz" for k, v in self.physics["fault_hz"].items()))
         return "\n".join(lines)
+
+
+def make_physics(channel, shaft_rpm, orders):
+    shaft_hz = shaft_rpm / 60
+    return {"channel": channel, "shaft_hz": shaft_hz, "fault_hz": {k: o * shaft_hz for k, o in orders.items()}}
 
 
 def load_dataset(source="cwru", fs=None):
@@ -72,9 +93,9 @@ def load_dataset(source="cwru", fs=None):
 
 
 # ----------------------------------------------------------------------------- CWRU
-def download_cwru(raw_dir=RAW_DIR):
+def download_cwru(raw_dir=RAW_DIR, files=CWRU_FILES):
     raw_dir.mkdir(parents=True, exist_ok=True)
-    for label, num in CWRU_FILES.items():
+    for label, num in files.items():
         path = raw_dir / f"{num}.mat"
         if not path.exists():
             print(f"downloading {label} ({num}.mat) ...")
@@ -90,11 +111,13 @@ def _read_cwru_channel(mat, num, channel):
     return mat[keys[0]].ravel().astype(float)
 
 
-def load_cwru(raw_dir=RAW_DIR):
-    download_cwru(raw_dir)
-    frames, start = [], CWRU_START
-    for segment, (label, num) in enumerate(CWRU_FILES.items()):
+def load_cwru(load_hp=0, raw_dir=RAW_DIR):
+    files = CWRU_LOADS[load_hp]
+    download_cwru(raw_dir, files)
+    frames, rpms, start = [], [], CWRU_START
+    for segment, (label, num) in enumerate(files.items()):
         mat = scipy.io.loadmat(raw_dir / f"{num}.mat")
+        rpms += [float(mat[k].ravel()[0]) for k in mat if k.endswith("RPM")]
         signals = {ch: _read_cwru_channel(mat, num, ch) for ch in CWRU_CHANNELS}
         n = min(len(x) for x in signals.values())
         frame = pd.DataFrame({ch: x[:n] for ch, x in signals.items()})
@@ -104,7 +127,9 @@ def load_cwru(raw_dir=RAW_DIR):
         frames.append(frame)
         start = frame.timestamp.iloc[-1] + pd.Timedelta(seconds=10)  # recordings back to back
     df = pd.concat(frames, ignore_index=True)
-    return Dataset(df, CWRU_FS, list(CWRU_CHANNELS), True, "cwru")
+    physics = make_physics("DE", float(np.median(rpms)), CWRU_BEARING_ORDERS)
+    source = "cwru" if load_hp == 0 else f"cwru ({load_hp} HP)"
+    return Dataset(df, CWRU_FS, list(CWRU_CHANNELS), True, source, physics)
 
 
 # ----------------------------------------------------------------------------- CSV
@@ -147,7 +172,10 @@ def load_csv(path, fs=None):
     df["segment"] = new_segment.cumsum() - 1
 
     keep = ["timestamp", *sensor_cols] + (["label"] if has_labels else []) + ["segment"]
-    return Dataset(df[keep], float(fs), sensor_cols, bool(has_labels), str(path))
+    physics = None
+    if CSV_PHYSICS:
+        physics = make_physics(CSV_PHYSICS["channel"], CSV_PHYSICS["shaft_rpm"], CSV_PHYSICS["orders"])
+    return Dataset(df[keep], float(fs), sensor_cols, bool(has_labels), str(path), physics)
 
 
 def export_csv(dataset, path):

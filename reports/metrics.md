@@ -57,3 +57,23 @@ Models are trained on the training split only; the test split is corrupted. Nois
 | noise 20 dB + drop 5% | 1.000 | 0.000 | 1.000 | 0.000 | 1.000 | 0.857 | 1.000 | 0.667 |
 
 ![robustness](robustness.png)
+
+## Physics check of alerts
+
+Envelope spectrum of ~0.34 s around each alert: does the peak at a bearing defect frequency match the predicted fault? A clear peak is at least 12 dB above the background.
+
+| true label | confirms | inconclusive | disagrees |
+|---|---|---|---|
+| ball | 0 | 46 | 0 |
+| inner_race | 46 | 0 | 0 |
+| outer_race | 46 | 0 | 0 |
+
+## Generalisation to unseen motor loads
+
+The model trained on 0 HP data, scored on every window of the 1-3 HP recordings (different shaft speed and load, never seen in training or tuning).
+
+| motor load (unseen) | windows | iforest_f1 | iforest_false_alarm | baseline_f1 | baseline_false_alarm | fault_type_accuracy | end_to_end_macro_f1 |
+|---|---|---|---|---|---|---|---|
+| 1 HP | 1892.000 | 0.877 | 0.845 | 1.000 | 0.000 | 0.755 | 0.562 |
+| 2 HP | 1893.000 | 0.872 | 0.888 | 1.000 | 0.000 | 0.701 | 0.479 |
+| 3 HP | 1897.000 | 0.898 | 0.687 | 1.000 | 0.000 | 0.680 | 0.524 |
